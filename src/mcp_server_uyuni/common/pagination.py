@@ -1,6 +1,27 @@
 from typing import Any, Dict, List, Optional
 
 
+def validate_page_bounds(limit: int, offset: int) -> None:
+    """Require the new catalog's 1-100 limit and non-negative offset."""
+    if not 1 <= limit <= 100 or offset < 0:
+        raise ValueError("limit must be 1-100 and offset must be non-negative")
+
+
+def build_page(items: list, offset: int, limit: int, mode: str) -> dict:
+    """Shape a requested page and one lookahead item into collection metadata."""
+    has_more = len(items) > limit
+    return {
+        "items": items[:limit],
+        "page": {
+            "returned": min(len(items), limit),
+            "next_offset": offset + limit if has_more else None,
+            "has_more": has_more,
+            "mode": mode,
+        },
+        "warnings": [],
+    }
+
+
 def normalize_pagination(
     limit: Optional[int],
     offset: int,

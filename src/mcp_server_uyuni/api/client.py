@@ -10,6 +10,7 @@ from ..errors import (
     NetworkError,
     UnexpectedResponse
 )
+from .systems import SystemsApi
 
 logger = get_logger("mcp_server_uyuni.uyuni_api", log_level=CONFIG["UYUNI_MCP_LOG_LEVEL"])
 
@@ -93,6 +94,7 @@ class UyuniSession:
     def __init__(self, token: str | None = None):
         self.token = token
         self._client: httpx.AsyncClient | None = None
+        self.systems = None
 
     async def __aenter__(self):
         if self._client is not None:
@@ -100,9 +102,11 @@ class UyuniSession:
         self._client = make_client()
         try:
             await login(self._client, token=self.token)
+            self.systems = SystemsApi(self)
         except BaseException:
             await self._client.aclose()
             self._client = None
+            self.systems = None
             raise
 
         return self
@@ -110,6 +114,7 @@ class UyuniSession:
     async def __aexit__(self, *_):
         client = self._client
         self._client = None
+        self.systems = None
         if client is not None:
             await client.aclose()
 
