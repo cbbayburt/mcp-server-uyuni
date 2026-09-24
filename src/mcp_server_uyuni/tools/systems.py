@@ -1,4 +1,4 @@
-"""MCP contracts for system discovery and events (temporary new catalog)."""
+"""MCP contracts for system discovery, events, and updates."""
 
 import inspect
 
@@ -6,8 +6,10 @@ from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 
 from ..api.client import UyuniSession
+from ..constants import AdvisoryType, ApplicationStatus, ResponseFormat
 from ..workflows.systems.discovery import SystemNotFoundError, get_system, search_systems
 from ..workflows.systems.events import get_event, list_events
+from ..workflows.systems.updates import SingleSystemUpdateFormat, get_updates, search_updates
 
 
 READ_ONLY = {
@@ -47,10 +49,10 @@ def register_system_tools(server: FastMCP, session_factory=UyuniSession) -> None
         limit: int = 25,
         offset: int = 0,
     ) -> dict:
-        """Search by hostname, IP, UUID, name, description, group, or reboot need.
+        """Find managed systems by hostname, IP, UUID, name or description, group, or reboot requirement.
 
-        Use systems_get for an exact ID. Returns compact references with
-        response-only pagination; Uyuni may return a full collection first.
+        Combine filters to narrow the results. Returns paged system IDs and
+        names; use systems_get when an ID is known or full details are needed.
         """
         return await run_with_api(
             ctx, search_systems,
@@ -70,10 +72,10 @@ def register_system_tools(server: FastMCP, session_factory=UyuniSession) -> None
         system_id: int | None = None,
         system_name: str | None = None,
     ) -> dict:
-        """Get canonical identity, boot, CPU, network, UUID, and installed products.
+        """Get a managed system's identity, hardware, network, and installed products.
 
-        Supply exactly one of system_id or system_name. Use systems_search for
-        discovery; an ambiguous name requires retrying with an ID.
+        Supply exactly one system ID or exact system name. Use systems_search
+        to find an ID when the name is unknown or ambiguous.
         """
         return await run_with_api(
             ctx, get_system, system_id=system_id, system_name=system_name,
@@ -93,10 +95,10 @@ def register_system_tools(server: FastMCP, session_factory=UyuniSession) -> None
         offset: int = 0,
         earliest_date: str | None = None,
     ) -> dict:
-        """List newest-first event summaries for one system with native pagination.
+        """List action and event history for one managed system, newest first.
 
-        Supply exactly one of system_id or system_name. Use systems_events_get
-        with an event_id for full details.
+        Supply exactly one system ID or exact system name. Filter by earliest
+        date or page through summaries; use systems_events_get for one event.
         """
         return await run_with_api(
             ctx, list_events,
@@ -116,19 +118,69 @@ def register_system_tools(server: FastMCP, session_factory=UyuniSession) -> None
         system_id: int | None = None,
         system_name: str | None = None,
     ) -> dict:
-        """Get one event returned by systems_events_list.
+        """Get the status, timing, and result of one system event.
 
-        Supply event_id and exactly one owning system_id or system_name.
-        Returns status, timestamps, results, and additional information.
+        Supply its event ID and exactly one owning system ID or exact system
+        name. Use systems_events_list to find event IDs.
         """
         return await run_with_api(
             ctx, get_event,
             event_id=event_id, system_id=system_id, system_name=system_name,
         )
 
+    @server.tool(
+        name="systems_updates_get",
+        annotations=READ_ONLY,
+        tags={"patching"},
+        output_schema=None,
+    )
+    async def systems_updates_get(
+        ctx: Context,
+        system_id: int | None = None,
+        system_name: str | None = None,
+        response_format: SingleSystemUpdateFormat = "summary",
+        advisory_types: list[AdvisoryType] | None = None,
+        application_status: ApplicationStatus | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> dict:
+        """List relevant update advisories for one managed system.
 
-def build_test_system_catalog(session_factory=UyuniSession) -> FastMCP:
-    """Temporary opt-in catalog for contract tests; production still uses legacy tools."""
-    server = FastMCP("uyuni-system-catalog-test")
-    register_system_tools(server, session_factory)
-    return server
+        Supply exactly one system ID or exact system name. Filter by advisory
+        type or application status: Pending means not scheduled; Queued means
+        scheduled. Counts returns totals without advisory items; offset must be
+        zero and limit has no effect. Summary gives brief paged advisories,
+        standard adds synopsis and restart hints, and detailed includes CVEs.
+        """
+        return await run_with_api(
+            ctx, get_updates,
+            system_id=system_id, system_name=system_name,
+            response_format=response_format, advisory_types=advisory_types,
+            application_status=application_status, limit=limit, offset=offset,
+        )
+
+    @server.tool(
+        name="systems_updates_search",
+        annotations=READ_ONLY,
+        tags={"patching"},
+        output_schema=None,
+    )
+    async def systems_updates_search(
+        ctx: Context,
+        group_name: str | None = None,
+        response_format: ResponseFormat = "summary",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> dict:
+        """Find managed systems with available package updates, optionally within a group.
+
+        Returns paged package update and advisory counts for each system. Some
+        systems have package updates without advisories. Standard and detailed
+        formats add advisory previews; detailed includes CVEs. Use
+        systems_updates_get for all advisories on one system.
+        """
+        return await run_with_api(
+            ctx, search_updates,
+            group_name=group_name, response_format=response_format,
+            limit=limit, offset=offset,
+        )

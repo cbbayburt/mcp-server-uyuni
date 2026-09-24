@@ -107,7 +107,7 @@ async def test_expected_and_unexpected_timeouts():
 
 
 @pytest.mark.asyncio
-async def test_session_authenticates_once_for_multiple_requests(monkeypatch):
+async def test_session_authenticates_once_before_domain_calls_in_any_order(monkeypatch):
     monkeypatch.setitem(client.CONFIG, "UYUNI_USER", "test-user")
     monkeypatch.setitem(client.CONFIG, "UYUNI_PASS", "test-pass")
     paths = []
@@ -119,11 +119,18 @@ async def test_session_authenticates_once_for_multiple_requests(monkeypatch):
     transport = httpx.MockTransport(handler)
     monkeypatch.setattr(client, "make_client", lambda: httpx.AsyncClient(transport=transport))
     async with client.UyuniSession() as session:
-        await session.get("/rhn/manager/api/system/listSystems", "listing systems")
-        await session.get("/rhn/manager/api/system/listSuggestedReboot", "listing reboots")
+        assert session.systems.session is session
+        assert session.errata.session is session
+        assert session.audit.session is session
+        await session.errata.find_by_cve("CVE-2026-1234")
+        await session.audit.list_systems_by_patch_status("CVE-2026-1234")
+        await session.systems.list_systems()
+        await session.systems.list_suggested_reboot()
 
     assert paths == [
         "/rhn/manager/api/login",
+        "/rhn/manager/api/errata/findByCve",
+        "/rhn/manager/api/audit/listSystemsByPatchStatus",
         "/rhn/manager/api/system/listSystems",
         "/rhn/manager/api/system/listSuggestedReboot",
     ]

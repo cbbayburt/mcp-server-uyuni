@@ -3,7 +3,6 @@
 from typing import Any
 
 
-
 class SystemsApi:
     def __init__(self, session):
         self.session = session
@@ -15,6 +14,10 @@ class SystemsApi:
 
     async def list_systems(self):
         return await self._get("system", "listSystems")
+
+    async def list_out_of_date_systems(self):
+        """List visible systems with outdated packages."""
+        return await self._get("system", "listOutOfDateSystems")
 
     async def search(self, field: str, term: str):
         if field not in {"hostname", "ip", "uuid", "nameAndDescription"}:
@@ -54,3 +57,15 @@ class SystemsApi:
 
     async def get_event_details(self, sid: int, eid: int):
         return await self._get("system", "getEventDetails", {"sid": sid, "eid": eid}, dict)
+
+    async def get_relevant_errata(self, sid: int):
+        """Get relevant errata for one system."""
+        return await self._get("system", "getRelevantErrata", {"sid": sid})
+
+    async def get_relevant_errata_batch(self, sids: list[int]):
+        """Get relevant errata for multiple systems."""
+        return await self._get("system", "getRelevantErrata", {"sids": sids})
+
+    async def get_unscheduled_errata(self, sid: int):
+        """Get applicable errata without a queued action."""
+        return await self._get("system", "getUnscheduledErrata", {"sid": sid})

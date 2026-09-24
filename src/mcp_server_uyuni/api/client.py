@@ -10,6 +10,8 @@ from ..errors import (
     NetworkError,
     UnexpectedResponse
 )
+from .audit import AuditApi
+from .errata import ErrataApi
 from .systems import SystemsApi
 
 logger = get_logger("mcp_server_uyuni.uyuni_api", log_level=CONFIG["UYUNI_MCP_LOG_LEVEL"])
@@ -89,12 +91,14 @@ async def login(client: httpx.AsyncClient, token: Optional[str] = None) -> None:
 
 
 class UyuniSession:
-    """Own one authenticated HTTP client per tool call."""
+    """Own one authenticated HTTP client and its domain adapters per tool call."""
 
     def __init__(self, token: str | None = None):
         self.token = token
         self._client: httpx.AsyncClient | None = None
         self.systems = None
+        self.errata = None
+        self.audit = None
 
     async def __aenter__(self):
         if self._client is not None:
@@ -103,10 +107,12 @@ class UyuniSession:
         try:
             await login(self._client, token=self.token)
             self.systems = SystemsApi(self)
+            self.errata = ErrataApi(self)
+            self.audit = AuditApi(self)
         except BaseException:
             await self._client.aclose()
             self._client = None
-            self.systems = None
+            self.systems = self.errata = self.audit = None
             raise
 
         return self
@@ -114,7 +120,7 @@ class UyuniSession:
     async def __aexit__(self, *_):
         client = self._client
         self._client = None
-        self.systems = None
+        self.systems = self.errata = self.audit = None
         if client is not None:
             await client.aclose()
 
